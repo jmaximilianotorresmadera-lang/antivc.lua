@@ -1,5 +1,6 @@
--- LocalScript con Menú Interactivo - 50+ Comandos
--- Coloca esto en StarterPlayer > StarterCharacterScripts
+-- RIVAS EXECUTOR PRO - Script Completo con Aimbot, ESP y Fly
+-- LocalScript para StarterPlayer > StarterCharacterScripts
+-- Versión: 1.0 Rivas Edition
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -7,769 +8,701 @@ local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local Mouse = LocalPlayer:GetMouse()
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local Humanoid = Character:WaitForChild("Humanoid")
 local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 
--- ========== INTERFAZ GUI ==========
+-- ========== ANTI-DETECCIÓN ==========
+pcall(function()
+    local mt = getrawmetatable(game)
+    local oldIndex = mt.__index
+    setreadonly(mt, false)
+    mt.__index = function(self, key)
+        if self == script or tostring(self):find("LocalScript") then
+            return nil
+        end
+        return oldIndex(self, key)
+    end
+    setreadonly(mt, true)
+end)
+
+-- ========== VARIABLES GLOBALES ==========
+local settings = {
+    aimbot = {
+        enabled = false,
+        smoothness = 0.1,
+        range = 100,
+        targetPart = "Head",
+        showFOV = false,
+    },
+    esp = {
+        enabled = false,
+        showDistance = true,
+        showHealth = true,
+        showTeam = true,
+        boxType = "2D", -- "2D" o "3D"
+    },
+    fly = {
+        enabled = false,
+        speed = 50,
+    },
+    combat = {
+        godMode = false,
+        speedBoost = false,
+        noclip = false,
+        invisible = false,
+    }
+}
+
+local espDrawings = {}
+local targetPlayer = nil
+
+-- ========== COLORES ==========
+local colors = {
+    primary = Color3.fromRGB(100, 200, 255),
+    secondary = Color3.fromRGB(150, 100, 255),
+    dark = Color3.fromRGB(20, 20, 35),
+    darker = Color3.fromRGB(15, 15, 25),
+    danger = Color3.fromRGB(255, 100, 120),
+    success = Color3.fromRGB(100, 255, 150),
+    accent = Color3.fromRGB(255, 150, 100),
+}
+
+-- ========== FUNCIONES ==========
+
+local function notify(msg)
+    print("[RIVAS EXECUTOR] " .. msg)
+end
+
+local function getNearestPlayer()
+    local nearest = nil
+    local minDist = math.huge
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local dist = (player.Character.HumanoidRootPart.Position - HumanoidRootPart.Position).Magnitude
+            if dist < minDist and dist < settings.aimbot.range then
+                minDist = dist
+                nearest = player
+            end
+        end
+    end
+    return nearest
+end
+
+-- ========== AIMBOT SYSTEM ==========
+
+local function enableAimbot()
+    settings.aimbot.enabled = true
+    notify("✓ AIMBOT ACTIVADO")
+    
+    local connection
+    connection = RunService.RenderStepped:Connect(function()
+        if not settings.aimbot.enabled then
+            connection:Disconnect()
+            return
+        end
+        
+        targetPlayer = getNearestPlayer()
+        
+        if targetPlayer and targetPlayer.Character then
+            local targetPart = targetPlayer.Character:FindFirstChild(settings.aimbot.targetPart)
+            if targetPart then
+                local camera = workspace.CurrentCamera
+                local direction = (targetPart.Position - camera.CFrame.Position).Unit
+                local newCFrame = CFrame.new(camera.CFrame.Position, camera.CFrame.Position + direction)
+                
+                camera.CFrame = camera.CFrame:Lerp(newCFrame, settings.aimbot.smoothness)
+            end
+        end
+    end)
+end
+
+local function disableAimbot()
+    settings.aimbot.enabled = false
+    notify("✗ AIMBOT DESACTIVADO")
+end
+
+-- ========== ESP SYSTEM ==========
+
+local function clearESP()
+    for _, drawing in ipairs(espDrawings) do
+        pcall(function() drawing:Remove() end)
+    end
+    espDrawings = {}
+end
+
+local function createESPBox(player)
+    if not player or not player.Character then return end
+    
+    local character = player.Character
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChild("Humanoid")
+    
+    if not humanoidRootPart or not humanoid then return end
+    
+    local camera = workspace.CurrentCamera
+    
+    -- Convertir posición 3D a 2D
+    local screenPos, onScreen = camera:WorldToScreenPoint(humanoidRootPart.Position)
+    
+    if not onScreen then return end
+    
+    -- Crear caja 2D
+    local box = Drawing.new("Rectangle")
+    box.Size = Vector2.new(100, 120)
+    box.Position = Vector2.new(screenPos.X - 50, screenPos.Y - 60)
+    box.Color = player.Team == LocalPlayer.Team and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+    box.Thickness = 2
+    box.Transparency = 0.7
+    box.Filled = false
+    
+    -- Nombre del jugador
+    local nameLabel = Drawing.new("Text")
+    nameLabel.Text = player.Name
+    nameLabel.Size = 18
+    nameLabel.Color = Color3.fromRGB(255, 255, 255)
+    nameLabel.Position = Vector2.new(screenPos.X - 30, screenPos.Y - 80)
+    
+    -- Distancia
+    local distance = (humanoidRootPart.Position - HumanoidRootPart.Position).Magnitude
+    local distLabel = Drawing.new("Text")
+    distLabel.Text = math.floor(distance) .. "m"
+    distLabel.Size = 14
+    distLabel.Color = Color3.fromRGB(150, 255, 150)
+    distLabel.Position = Vector2.new(screenPos.X - 20, screenPos.Y + 65)
+    
+    -- Salud
+    local healthLabel = Drawing.new("Text")
+    healthLabel.Text = "HP: " .. math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth)
+    healthLabel.Size = 14
+    healthLabel.Color = Color3.fromRGB(100, 255, 100)
+    healthLabel.Position = Vector2.new(screenPos.X - 40, screenPos.Y + 45)
+    
+    table.insert(espDrawings, box)
+    table.insert(espDrawings, nameLabel)
+    table.insert(espDrawings, distLabel)
+    table.insert(espDrawings, healthLabel)
+end
+
+local function updateESP()
+    if not settings.esp.enabled then return end
+    
+    clearESP()
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            createESPBox(player)
+        end
+    end
+end
+
+local function enableESP()
+    settings.esp.enabled = true
+    notify("✓ ESP ACTIVADO")
+    
+    local connection
+    connection = RunService.RenderStepped:Connect(function()
+        if not settings.esp.enabled then
+            connection:Disconnect()
+            clearESP()
+            return
+        end
+        updateESP()
+    end)
+end
+
+local function disableESP()
+    settings.esp.enabled = false
+    clearESP()
+    notify("✗ ESP DESACTIVADO")
+end
+
+-- ========== FLY SYSTEM ==========
+
+local function enableFly()
+    settings.fly.enabled = true
+    notify("✓ FLY ACTIVADO - Velocidad: " .. settings.fly.speed)
+    
+    local bodyVel = Instance.new("BodyVelocity")
+    bodyVel.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+    bodyVel.Parent = HumanoidRootPart
+    
+    local connection
+    connection = RunService.RenderStepped:Connect(function()
+        if not settings.fly.enabled then
+            connection:Disconnect()
+            bodyVel:Destroy()
+            return
+        end
+        
+        local camera = workspace.CurrentCamera
+        bodyVel.Velocity = camera.CFrame.LookVector * settings.fly.speed
+    end)
+end
+
+local function disableFly()
+    settings.fly.enabled = false
+    notify("✗ FLY DESACTIVADO")
+end
+
+local function increaseFlySpeed()
+    settings.fly.speed = settings.fly.speed + 10
+    notify("Velocidad: " .. settings.fly.speed)
+end
+
+local function decreaseFlySpeed()
+    settings.fly.speed = math.max(10, settings.fly.speed - 10)
+    notify("Velocidad: " .. settings.fly.speed)
+end
+
+-- ========== COMBAT FEATURES ==========
+
+local function enableGodMode()
+    settings.combat.godMode = true
+    Humanoid.MaxHealth = math.huge
+    notify("✓ GOD MODE ACTIVADO")
+    
+    local connection
+    connection = RunService.Heartbeat:Connect(function()
+        if not settings.combat.godMode or not Humanoid then
+            connection:Disconnect()
+            return
+        end
+        Humanoid.Health = math.huge
+    end)
+end
+
+local function disableGodMode()
+    settings.combat.godMode = false
+    notify("✗ GOD MODE DESACTIVADO")
+end
+
+local function enableNoclip()
+    settings.combat.noclip = true
+    notify("✓ NOCLIP ACTIVADO")
+    
+    local connection
+    connection = RunService.Stepped:Connect(function()
+        if not settings.combat.noclip or not Character then
+            connection:Disconnect()
+            return
+        end
+        
+        for _, part in ipairs(Character:FindDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end)
+end
+
+local function disableNoclip()
+    settings.combat.noclip = false
+    for _, part in ipairs(Character:FindDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = true
+        end
+    end
+    notify("✗ NOCLIP DESACTIVADO")
+end
+
+local function enableInvisible()
+    settings.combat.invisible = true
+    for _, part in ipairs(Character:FindDescendants()) do
+        if part:IsA("BasePart") then
+            part.Transparency = 1
+        end
+    end
+    notify("✓ INVISIBLE ACTIVADO")
+end
+
+local function disableInvisible()
+    settings.combat.invisible = false
+    for _, part in ipairs(Character:FindDescendants()) do
+        if part:IsA("BasePart") then
+            part.Transparency = 0
+        end
+    end
+    notify("✗ INVISIBLE DESACTIVADO")
+end
+
+local function enableSpeedBoost()
+    settings.combat.speedBoost = true
+    Humanoid.WalkSpeed = 100
+    notify("✓ SPEED BOOST ACTIVADO")
+end
+
+local function disableSpeedBoost()
+    settings.combat.speedBoost = false
+    Humanoid.WalkSpeed = 16
+    notify("✗ SPEED BOOST DESACTIVADO")
+end
+
+-- ========== GUI PRINCIPAL ==========
+
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "ExecutorMenu"
+screenGui.Name = "RivasExecutor"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 400, 0, 600)
-mainFrame.Position = UDim2.new(0, 20, 0, 20)
-mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+mainFrame.Size = UDim2.new(0, 450, 0, 600)
+mainFrame.Position = UDim2.new(0, 20, 0.5, -300)
+mainFrame.BackgroundColor3 = colors.dark
 mainFrame.BorderSizePixel = 0
+mainFrame.Visible = true
 mainFrame.Parent = screenGui
 
--- Esquina redondeada
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 10)
-corner.Parent = mainFrame
+local bgGradient = Instance.new("UIGradient")
+bgGradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, colors.dark),
+    ColorSequenceKeypoint.new(1, colors.darker)
+}
+bgGradient.Parent = mainFrame
 
--- ========== BARRA DE TÍTULO ==========
-local titleBar = Instance.new("Frame")
-titleBar.Name = "TitleBar"
-titleBar.Size = UDim2.new(1, 0, 0, 50)
-titleBar.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
-titleBar.BorderSizePixel = 0
-titleBar.Parent = mainFrame
+local bgCorner = Instance.new("UICorner")
+bgCorner.CornerRadius = UDim.new(0, 15)
+bgCorner.Parent = mainFrame
 
-local titleCorner = Instance.new("UICorner")
-titleCorner.CornerRadius = UDim.new(0, 10)
-titleCorner.Parent = titleBar
+-- HEADER
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1, 0, 0, 100)
+header.BackgroundColor3 = colors.darker
+header.BorderSizePixel = 0
+header.Parent = mainFrame
+
+local headerCorner = Instance.new("UICorner")
+headerCorner.CornerRadius = UDim.new(0, 15)
+headerCorner.Parent = header
+
+local headerGradient = Instance.new("UIGradient")
+headerGradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, colors.primary),
+    ColorSequenceKeypoint.new(1, colors.secondary)
+}
+headerGradient.Rotation = 90
+headerGradient.Parent = header
 
 local titleLabel = Instance.new("TextLabel")
-titleLabel.Text = "⚡ EXECUTOR MENU v2.0"
-titleLabel.Size = UDim2.new(1, -80, 1, 0)
-titleLabel.Position = UDim2.new(0, 10, 0, 0)
+titleLabel.Text = "⚡ RIVAS EXECUTOR PRO"
+titleLabel.Size = UDim2.new(1, -20, 0, 50)
+titleLabel.Position = UDim2.new(0, 10, 0, 10)
 titleLabel.BackgroundTransparency = 1
-titleLabel.TextColor3 = Color3.fromRGB(0, 255, 136)
-titleLabel.TextSize = 18
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 24
 titleLabel.Font = Enum.Font.GothamBold
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-titleLabel.Parent = titleBar
+titleLabel.Parent = header
 
--- Botón cerrar
-local closeBtn = Instance.new("TextButton")
-closeBtn.Name = "CloseBtn"
-closeBtn.Text = "✕"
-closeBtn.Size = UDim2.new(0, 40, 0, 40)
-closeBtn.Position = UDim2.new(1, -50, 0, 5)
-closeBtn.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
-closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-closeBtn.TextSize = 16
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.BorderSizePixel = 0
-closeBtn.Parent = titleBar
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Text = "Aimbot: OFF | ESP: OFF | Fly: OFF"
+statusLabel.Size = UDim2.new(1, -20, 0, 30)
+statusLabel.Position = UDim2.new(0, 10, 0, 55)
+statusLabel.BackgroundTransparency = 1
+statusLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
+statusLabel.TextSize = 12
+statusLabel.Font = Enum.Font.Gotham
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.Parent = header
 
-local closeBtnCorner = Instance.new("UICorner")
-closeBtnCorner.CornerRadius = UDim.new(0, 5)
-closeBtnCorner.Parent = closeBtn
-
--- ========== LISTA DE BOTONES SCROLLABLE ==========
+-- CONTENIDO SCROLLABLE
 local scrollFrame = Instance.new("ScrollingFrame")
-scrollFrame.Name = "ScrollFrame"
-scrollFrame.Size = UDim2.new(1, 0, 1, -60)
-scrollFrame.Position = UDim2.new(0, 0, 0, 50)
-scrollFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-scrollFrame.BorderSizePixel = 0
+scrollFrame.Size = UDim2.new(1, 0, 1, -100)
+scrollFrame.Position = UDim2.new(0, 0, 0, 100)
+scrollFrame.BackgroundTransparency = 1
 scrollFrame.ScrollBarThickness = 6
-scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 255, 136)
+scrollFrame.ScrollBarImageColor3 = colors.primary
 scrollFrame.Parent = mainFrame
 
-local uiListLayout = Instance.new("UIListLayout")
-uiListLayout.Padding = UDim.new(0, 5)
-uiListLayout.Parent = scrollFrame
+local listLayout = Instance.new("UIListLayout")
+listLayout.Padding = UDim.new(0, 6)
+listLayout.Parent = scrollFrame
 
-local uiPadding = Instance.new("UIPadding")
-uiPadding.PaddingLeft = UDim.new(0, 5)
-uiPadding.PaddingRight = UDim.new(0, 5)
-uiPadding.PaddingTop = UDim.new(0, 5)
-uiPadding.PaddingBottom = UDim.new(0, 5)
-uiPadding.Parent = scrollFrame
+local padding = Instance.new("UIPadding")
+padding.PaddingLeft = UDim.new(0, 8)
+padding.PaddingRight = UDim.new(0, 8)
+padding.PaddingTop = UDim.new(0, 8)
+padding.PaddingBottom = UDim.new(0, 8)
+padding.Parent = scrollFrame
 
--- ========== ESTADOS ==========
-local states = {
-    godMode = false,
-    noclip = false,
-    flyMode = false,
-    spin = false,
-    invisible = false,
-    speedBoost = false,
-}
-
--- ========== FUNCIONES AUXILIARES ==========
-local function createButton(name, callback)
-    local button = Instance.new("TextButton")
-    button.Name = name
-    button.Text = "▶ " .. name
-    button.Size = UDim2.new(1, 0, 0, 35)
-    button.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-    button.TextColor3 = Color3.fromRGB(200, 200, 255)
-    button.TextSize = 13
-    button.Font = Enum.Font.Gotham
-    button.BorderSizePixel = 0
-    button.Parent = scrollFrame
+-- FUNCIÓN CREAR BOTÓN
+local function createButton(parent, text, callback, color)
+    color = color or colors.primary
+    
+    local btn = Instance.new("TextButton")
+    btn.Text = "▶ " .. text
+    btn.Size = UDim2.new(1, 0, 0, 45)
+    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
+    btn.TextColor3 = Color3.fromRGB(200, 200, 255)
+    btn.TextSize = 12
+    btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 0
+    btn.Parent = parent
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local btnPadding = Instance.new("UIPadding")
+    btnPadding.PaddingLeft = UDim.new(0, 12)
+    btnPadding.Parent = btn
     
     local btnCorner = Instance.new("UICorner")
-    btnCorner.CornerRadius = UDim.new(0, 5)
-    btnCorner.Parent = button
+    btnCorner.CornerRadius = UDim.new(0, 8)
+    btnCorner.Parent = btn
     
-    button.MouseButton1Click:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(0, 255, 136)
-        button.TextColor3 = Color3.fromRGB(0, 0, 0)
-        callback()
-        wait(0.1)
-        button.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-        button.TextColor3 = Color3.fromRGB(200, 200, 255)
+    btn.MouseButton1Click:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = color}):Play()
+        btn.TextColor3 = Color3.fromRGB(0, 0, 0)
+        pcall(callback)
+        wait(0.15)
+        TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(40, 40, 65)}):Play()
+        btn.TextColor3 = Color3.fromRGB(200, 200, 255)
     end)
     
-    button.MouseEnter:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(55, 55, 80)}):Play()
     end)
     
-    button.MouseLeave:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 65)}):Play()
     end)
     
-    return button
+    return btn
 end
 
-local function notify(msg)
-    print("[EXECUTOR] " .. msg)
-end
+-- ========== BOTONES AIMBOT ==========
 
-local function getPlayer(name)
-    for _, player in ipairs(Players:GetPlayers()) do
-        if string.lower(player.Name):find(string.lower(name), 1, true) then
-            return player
-        end
-    end
-    return nil
-end
-
--- ========== COMANDOS (50+) ==========
-
--- 1. GOD MODE
-createButton("God Mode", function()
-    states.godMode = not states.godMode
-    if states.godMode then
-        Humanoid.MaxHealth = math.huge
-        Humanoid.Health = math.huge
-        RunService.Heartbeat:Connect(function()
-            if states.godMode and Humanoid then
-                Humanoid.Health = math.huge
-            end
-        end)
-        notify("✓ God Mode ON")
+createButton(scrollFrame, "Enable Aimbot", function()
+    if settings.aimbot.enabled then
+        disableAimbot()
     else
-        notify("✗ God Mode OFF")
+        enableAimbot()
     end
-end)
+end, colors.danger)
 
--- 2. NOCLIP
-createButton("Noclip", function()
-    states.noclip = not states.noclip
-    if states.noclip then
-        RunService.Stepped:Connect(function()
-            if states.noclip and Character then
-                for _, part in ipairs(Character:FindDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
-                    end
-                end
-            end
-        end)
-        notify("✓ Noclip ON")
+createButton(scrollFrame, "Aimbot Smoothness +", function()
+    settings.aimbot.smoothness = math.min(1, settings.aimbot.smoothness + 0.1)
+    notify("Smoothness: " .. math.floor(settings.aimbot.smoothness * 100) .. "%")
+end, colors.accent)
+
+createButton(scrollFrame, "Aimbot Smoothness -", function()
+    settings.aimbot.smoothness = math.max(0, settings.aimbot.smoothness - 0.1)
+    notify("Smoothness: " .. math.floor(settings.aimbot.smoothness * 100) .. "%")
+end, colors.accent)
+
+createButton(scrollFrame, "Aimbot Range +50", function()
+    settings.aimbot.range = settings.aimbot.range + 50
+    notify("Rango: " .. settings.aimbot.range)
+end, colors.accent)
+
+createButton(scrollFrame, "Change Target Part", function()
+    local parts = {"Head", "Torso", "HumanoidRootPart"}
+    local idx = table.find(parts, settings.aimbot.targetPart) or 1
+    idx = idx % #parts + 1
+    settings.aimbot.targetPart = parts[idx]
+    notify("Target: " .. settings.aimbot.targetPart)
+end, colors.accent)
+
+-- ========== BOTONES ESP ==========
+
+createButton(scrollFrame, "Enable ESP", function()
+    if settings.esp.enabled then
+        disableESP()
     else
-        for _, part in ipairs(Character:FindDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = true
-            end
-        end
-        notify("✗ Noclip OFF")
+        enableESP()
     end
-end)
+end, colors.success)
 
--- 3. VOLAR
-createButton("Fly Mode", function()
-    states.flyMode = not states.flyMode
-    if states.flyMode then
-        local bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-        bodyVelocity.MaxForce = Vector3.new(100000, 100000, 100000)
-        bodyVelocity.Parent = HumanoidRootPart
-        
-        RunService.RenderStepped:Connect(function()
-            if states.flyMode and Character then
-                local camera = workspace.CurrentCamera
-                bodyVelocity.Velocity = camera.CFrame.LookVector * 50
-            end
-        end)
-        notify("✓ Fly Mode ON")
+createButton(scrollFrame, "ESP Box Type", function()
+    settings.esp.boxType = settings.esp.boxType == "2D" and "3D" or "2D"
+    notify("Box Type: " .. settings.esp.boxType)
+end, colors.accent)
+
+-- ========== BOTONES FLY ==========
+
+createButton(scrollFrame, "Enable Fly", function()
+    if settings.fly.enabled then
+        disableFly()
     else
-        notify("✗ Fly Mode OFF")
+        enableFly()
     end
-end)
+end, colors.primary)
 
--- 4. VELOCIDAD
-createButton("Speed Boost x5", function()
-    if not states.speedBoost then
-        states.speedBoost = true
-        Humanoid.WalkSpeed = 50
-        notify("✓ Speed Boost ON")
+createButton(scrollFrame, "Fly Speed +", function()
+    increaseFlySpeed()
+end, colors.accent)
+
+createButton(scrollFrame, "Fly Speed -", function()
+    decreaseFlySpeed()
+end, colors.accent)
+
+-- ========== BOTONES COMBAT ==========
+
+createButton(scrollFrame, "God Mode", function()
+    if settings.combat.godMode then
+        disableGodMode()
     else
-        states.speedBoost = false
-        Humanoid.WalkSpeed = 16
-        notify("✗ Speed Boost OFF")
+        enableGodMode()
     end
-end)
+end, colors.danger)
 
--- 5. SUPER SALTO
-createButton("Super Jump x10", function()
-    Humanoid.JumpPower = 100
-    notify("✓ Super Jump activado")
-end)
-
--- 6. INVISIBLE
-createButton("Invisibility", function()
-    states.invisible = not states.invisible
-    if states.invisible then
-        for _, part in ipairs(Character:FindDescendants()) do
-            if part:IsA("BasePart") then
-                part.Transparency = 1
-            end
-        end
-        notify("✓ Invisible ON")
+createButton(scrollFrame, "Speed Boost", function()
+    if settings.combat.speedBoost then
+        disableSpeedBoost()
     else
-        for _, part in ipairs(Character:FindDescendants()) do
-            if part:IsA("BasePart") then
-                part.Transparency = 0
-            end
-        end
-        notify("✗ Invisible OFF")
+        enableSpeedBoost()
     end
-end)
+end, colors.primary)
 
--- 7. SPIN
-createButton("Spin Mode", function()
-    states.spin = not states.spin
-    if states.spin then
-        RunService.Heartbeat:Connect(function()
-            if states.spin and Character then
-                HumanoidRootPart.CFrame = HumanoidRootPart.CFrame * CFrame.Angles(0, math.rad(50), 0)
-            end
-        end)
-        notify("✓ Spin Mode ON")
+createButton(scrollFrame, "Noclip", function()
+    if settings.combat.noclip then
+        disableNoclip()
     else
-        notify("✗ Spin Mode OFF")
+        enableNoclip()
     end
-end)
+end, colors.accent)
 
--- 8. TELEPORTAR ABAJO
-createButton("Teleport Down", function()
-    HumanoidRootPart.CFrame = HumanoidRootPart.CFrame + Vector3.new(0, -50, 0)
-    notify("✓ Teleportado abajo")
-end)
-
--- 9. TELEPORTAR ARRIBA
-createButton("Teleport Up", function()
-    HumanoidRootPart.CFrame = HumanoidRootPart.CFrame + Vector3.new(0, 50, 0)
-    notify("✓ Teleportado arriba")
-end)
-
--- 10. OBTENER COORDENADAS
-createButton("Show Coordinates", function()
-    local pos = HumanoidRootPart.Position
-    notify("📍 X: " .. math.floor(pos.X) .. " Y: " .. math.floor(pos.Y) .. " Z: " .. math.floor(pos.Z))
-end)
-
--- 11. OBTENER HERRAMIENTAS
-createButton("Get All Tools", function()
-    local count = 0
-    for _, tool in ipairs(workspace:FindDescendants()) do
-        if tool:IsA("Tool") then
-            local clone = tool:Clone()
-            clone.Parent = LocalPlayer.Backpack
-            count = count + 1
-        end
+createButton(scrollFrame, "Invisible", function()
+    if settings.combat.invisible then
+        disableInvisible()
+    else
+        enableInvisible()
     end
-    notify("✓ Obtenidas " .. count .. " herramientas")
-end)
+end, colors.secondary)
 
--- 12. CREAR ESFERA
-createButton("Create Sphere", function()
-    local sphere = Instance.new("Part")
-    sphere.Shape = Enum.PartType.Ball
-    sphere.Material = Enum.Material.Neon
-    sphere.BrickColor = BrickColor.new("Cyan")
-    sphere.Size = Vector3.new(5, 5, 5)
-    sphere.Position = HumanoidRootPart.Position + Vector3.new(0, 10, 0)
-    sphere.CanCollide = false
-    sphere.Parent = workspace
-    notify("✓ Esfera creada")
-end)
-
--- 13. CREAR CUBO
-createButton("Create Cube", function()
-    local cube = Instance.new("Part")
-    cube.Shape = Enum.PartType.Block
-    cube.Material = Enum.Material.Neon
-    cube.BrickColor = BrickColor.new("Magenta")
-    cube.Size = Vector3.new(5, 5, 5)
-    cube.Position = HumanoidRootPart.Position + Vector3.new(0, 10, 0)
-    cube.CanCollide = false
-    cube.Parent = workspace
-    notify("✓ Cubo creado")
-end)
-
--- 14. LIMPIAR PARTES
-createButton("Clear All Parts", function()
-    local removed = 0
-    for _, part in ipairs(workspace:FindDescendants()) do
-        if part:IsA("BasePart") and part.Parent ~= Character and not part:IsDescendantOf(Players) then
-            pcall(function()
-                part:Destroy()
-                removed = removed + 1
-            end)
-        end
+createButton(scrollFrame, "Kill Target", function()
+    if targetPlayer and targetPlayer.Character then
+        targetPlayer.Character.Humanoid.Health = 0
+        notify("✓ " .. targetPlayer.Name .. " eliminado")
     end
-    notify("✓ " .. removed .. " partes eliminadas")
-end)
+end, colors.danger)
 
--- 15. FPS COUNTER
-createButton("Show FPS", function()
-    local fps = math.floor(1 / RunService.RenderStepped:Wait())
-    notify("📊 FPS: " .. fps)
-end)
+createButton(scrollFrame, "TP to Target", function()
+    if targetPlayer and targetPlayer.Character then
+        HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(5, 0, 0)
+        notify("✓ Teletransportado a " .. targetPlayer.Name)
+    end
+end, colors.accent)
 
--- 16. REAPARICIÓN
-createButton("Respawn", function()
-    Humanoid.Health = 0
-    notify("✓ Reaparición iniciada")
-end)
+-- ========== BOTONES MUNDO ==========
 
--- 17. SALUD AL MÁXIMO
-createButton("Heal Yourself", function()
+createButton(scrollFrame, "Heal 100%", function()
     Humanoid.Health = Humanoid.MaxHealth
     notify("✓ Salud restaurada")
-end)
+end, colors.success)
 
--- 18. DINERO +1000
-createButton("Money +1000", function()
-    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
-    if leaderstats then
-        for _, stat in ipairs(leaderstats:GetChildren()) do
-            if stat:IsA("IntValue") or stat:IsA("NumberValue") then
-                stat.Value = stat.Value + 1000
-            end
-        end
-        notify("✓ +1000 dinero")
-    end
-end)
-
--- 19. DINERO +10000
-createButton("Money +10000", function()
-    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
-    if leaderstats then
-        for _, stat in ipairs(leaderstats:GetChildren()) do
-            if stat:IsA("IntValue") or stat:IsA("NumberValue") then
-                stat.Value = stat.Value + 10000
-            end
-        end
-        notify("✓ +10000 dinero")
-    end
-end)
-
--- 20. LISTAR JUGADORES
-createButton("List Players", function()
-    print("\n=== JUGADORES EN LÍNEA ===")
-    local count = 0
-    for _, player in ipairs(Players:GetPlayers()) do
-        print("• " .. player.Name)
-        count = count + 1
-    end
-    print("Total: " .. count)
-    print("==========================\n")
-end)
-
--- 21. BUSCAR JUGADOR CERCANO
-createButton("Find Nearest Player", function()
-    local nearest = nil
-    local distance = math.huge
-    
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            local dist = (player.Character.HumanoidRootPart.Position - HumanoidRootPart.Position).Magnitude
-            if dist < distance then
-                distance = dist
-                nearest = player
-            end
-        end
-    end
-    
-    if nearest then
-        notify("🎯 Más cercano: " .. nearest.Name .. " (" .. math.floor(distance) .. " studs)")
-    end
-end)
-
--- 22. CREAR PLATAFORMA
-createButton("Create Platform", function()
-    local platform = Instance.new("Part")
-    platform.Shape = Enum.PartType.Block
-    platform.Material = Enum.Material.Brick
-    platform.BrickColor = BrickColor.new("Lime green")
-    platform.Size = Vector3.new(20, 1, 20)
-    platform.Position = HumanoidRootPart.Position + Vector3.new(0, -5, 0)
-    platform.CanCollide = true
-    platform.Parent = workspace
-    notify("✓ Plataforma creada")
-end)
-
--- 23. MOSTRAR SALUD
-createButton("Show Health", function()
-    notify("❤️ Salud: " .. math.floor(Humanoid.Health) .. "/" .. math.floor(Humanoid.MaxHealth))
-end)
-
--- 24. CREAR LAZO
-createButton("Create Rope", function()
-    local rope = Instance.new("Part")
-    rope.Name = "Rope"
-    rope.Shape = Enum.PartType.Cylinder
-    rope.Size = Vector3.new(0.2, 20, 0.2)
-    rope.Material = Enum.Material.Rope
-    rope.BrickColor = BrickColor.new("Brown")
-    rope.Position = HumanoidRootPart.Position + Vector3.new(0, 10, 0)
-    rope.CanCollide = false
-    rope.Parent = workspace
-    notify("✓ Lazo creado")
-end)
-
--- 25. CREAR PARED
-createButton("Create Wall", function()
-    local wall = Instance.new("Part")
-    wall.Shape = Enum.PartType.Block
-    wall.Material = Enum.Material.Concrete
-    wall.BrickColor = BrickColor.new("Dark stone grey")
-    wall.Size = Vector3.new(30, 20, 1)
-    wall.Position = HumanoidRootPart.Position + Vector3.new(0, 0, -15)
-    wall.CanCollide = true
-    wall.Parent = workspace
-    notify("✓ Pared creada")
-end)
-
--- 26. CREAR PIRÁMIDE
-createButton("Create Pyramid", function()
-    for i = 1, 5 do
-        local block = Instance.new("Part")
-        block.Shape = Enum.PartType.Block
-        block.Material = Enum.Material.Neon
-        block.BrickColor = BrickColor.new("Bright yellow")
-        block.Size = Vector3.new(10 - (i * 2), 2, 10 - (i * 2))
-        block.Position = HumanoidRootPart.Position + Vector3.new(0, i * 2, 0)
-        block.CanCollide = false
-        block.Parent = workspace
-    end
-    notify("✓ Pirámide creada")
-end)
-
--- 27. CREAR FUENTE COLORIDA
-createButton("Create Rainbow Fountain", function()
-    local colors = {"Red", "Orange", "Yellow", "Lime green", "Cyan", "Blue", "Magenta"}
-    for i, color in ipairs(colors) do
-        local block = Instance.new("Part")
-        block.Shape = Enum.PartType.Ball
-        block.Material = Enum.Material.Neon
-        block.BrickColor = BrickColor.new(color)
-        block.Size = Vector3.new(2, 2, 2)
-        block.Position = HumanoidRootPart.Position + Vector3.new(i * 3, 15, 0)
-        block.CanCollide = false
-        block.Parent = workspace
-    end
-    notify("✓ Fuente arcoíris creada")
-end)
-
--- 28. CHAT SPAM (CUIDADO)
-createButton("Say Message", function()
-    LocalPlayer:Chat("¡Hola a todos!")
-    notify("✓ Mensaje enviado")
-end)
-
--- 29. DETECTOR DE BALAS
-createButton("Bullet Shield", function()
-    for _, part in ipairs(Character:FindDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = false
-        end
-    end
-    notify("✓ Escudo de balas activado")
-end)
-
--- 30. TAMAÑO GRANDE
-createButton("Become GIANT", function()
-    for _, part in ipairs(Character:FindDescendants()) do
-        if part:IsA("BasePart") then
-            part.Size = part.Size * 2
-        end
-    end
-    notify("✓ ¡Eres gigante!")
-end)
-
--- 31. TAMAÑO PEQUEÑO
-createButton("Become TINY", function()
-    for _, part in ipairs(Character:FindDescendants()) do
-        if part:IsA("BasePart") then
-            part.Size = part.Size * 0.5
-        end
-    end
-    notify("✓ ¡Eres pequeño!")
-end)
-
--- 32. CAMBIAR COLOR
-createButton("Change Color - RED", function()
-    for _, part in ipairs(Character:FindDescendants()) do
-        if part:IsA("BasePart") then
-            part.Color = Color3.fromRGB(255, 0, 0)
-        end
-    end
-    notify("✓ Color rojo")
-end)
-
--- 33. CAMBIAR COLOR AZUL
-createButton("Change Color - BLUE", function()
-    for _, part in ipairs(Character:FindDescendants()) do
-        if part:IsA("BasePart") then
-            part.Color = Color3.fromRGB(0, 0, 255)
-        end
-    end
-    notify("✓ Color azul")
-end)
-
--- 34. CAMBIAR COLOR VERDE
-createButton("Change Color - GREEN", function()
-    for _, part in ipairs(Character:FindDescendants()) do
-        if part:IsA("BasePart") then
-            part.Color = Color3.fromRGB(0, 255, 0)
-        end
-    end
-    notify("✓ Color verde")
-end)
-
--- 35. BRILLO MÁXIMO
-createButton("Max Brightness", function()
-    for _, part in ipairs(Character:FindDescendants()) do
-        if part:IsA("BasePart") then
-            part.Material = Enum.Material.Neon
-        end
-    end
-    notify("✓ Brillo máximo")
-end)
-
--- 36. OSCURIDAD
-createButton("Dark Mode", function()
-    for _, part in ipairs(Character:FindDescendants()) do
-        if part:IsA("BasePart") then
-            part.Material = Enum.Material.SmoothPlastic
-            part.Color = Color3.fromRGB(0, 0, 0)
-        end
-    end
-    notify("✓ Modo oscuro")
-end)
-
--- 37. CREAR EXPLOSIÓN
-createButton("Create Explosion", function()
-    local explosion = Instance.new("Explosion")
-    explosion.Position = HumanoidRootPart.Position
-    explosion.Parent = workspace
+createButton(scrollFrame, "Create Explosion", function()
+    local exp = Instance.new("Explosion")
+    exp.Position = HumanoidRootPart.Position
+    exp.Parent = workspace
     notify("✓ Explosión creada")
-end)
+end, colors.danger)
 
--- 38. LLUVIA DE BLOQUES
-createButton("Block Rain", function()
-    for i = 1, 10 do
-        local block = Instance.new("Part")
-        block.Shape = Enum.PartType.Block
-        block.Material = Enum.Material.Brick
-        block.BrickColor = BrickColor.new("Institutional white")
-        block.Size = Vector3.new(5, 5, 5)
-        block.Position = HumanoidRootPart.Position + Vector3.new(math.random(-20, 20), 50 + i * 10, math.random(-20, 20))
-        block.CanCollide = true
-        block.Parent = workspace
+createButton(scrollFrame, "List All Players", function()
+    print("\n╔════════════════════════════════╗")
+    print("║   JUGADORES EN LÍNEA           ║")
+    print("╠════════════════════════════════╣")
+    for i, player in ipairs(Players:GetPlayers()) do
+        print("║ " .. i .. ". " .. player.Name)
     end
-    notify("✓ Lluvia de bloques iniciada")
-end)
+    print("╚════════════════════════════════╝\n")
+end, colors.accent)
 
--- 39. CREAR DISCO
-createButton("Create Disco Ball", function()
-    local disco = Instance.new("Part")
-    disco.Shape = Enum.PartType.Ball
-    disco.Material = Enum.Material.Neon
-    disco.BrickColor = BrickColor.new("Medium stone grey")
-    disco.Size = Vector3.new(10, 10, 10)
-    disco.Position = HumanoidRootPart.Position + Vector3.new(0, 20, 0)
-    disco.CanCollide = false
-    disco.Parent = workspace
-    notify("✓ Bola de discoteca creada")
-end)
+createButton(scrollFrame, "Reset All", function()
+    disableAimbot()
+    disableESP()
+    disableFly()
+    disableGodMode()
+    disableNoclip()
+    disableInvisible()
+    disableSpeedBoost()
+    notify("✓ TODO RESETEADO")
+end, colors.danger)
 
--- 40. VISTA EN PRIMERA PERSONA
-createButton("First Person View", function()
-    local camera = workspace.CurrentCamera
-    camera.CFrame = HumanoidRootPart.CFrame + HumanoidRootPart.CFrame.LookVector * 5
-    notify("✓ Vista FPS activada")
-end)
+-- ========== CONTROLES DE TECLADO ==========
 
--- 41. VISTA EN TERCERA PERSONA
-createButton("Third Person View", function()
-    local camera = workspace.CurrentCamera
-    camera.CFrame = HumanoidRootPart.CFrame - HumanoidRootPart.CFrame.LookVector * 10
-    notify("✓ Vista de tercera persona")
-end)
-
--- 42. MODO OBSERVADOR
-createButton("Observer Mode", function()
-    Humanoid.HealthDisplayDistance = 0
-    Humanoid.NameDisplayDistance = 0
-    notify("✓ Modo observador")
-end)
-
--- 43. SALTO INFINITO
-createButton("Infinite Jump", function()
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        if input.KeyCode == Enum.KeyCode.Space then
-            Humanoid:Jump()
-        end
-    end)
-    notify("✓ Salto infinito activado")
-end)
-
--- 44. CREAR TELETRANSPORTADOR
-createButton("Create Teleporter Pad", function()
-    local pad = Instance.new("Part")
-    pad.Shape = Enum.PartType.Block
-    pad.Material = Enum.Material.Neon
-    pad.BrickColor = BrickColor.new("Cyan")
-    pad.Size = Vector3.new(10, 1, 10)
-    pad.Position = HumanoidRootPart.Position + Vector3.new(0, -5, 0)
-    pad.CanCollide = true
-    pad.Parent = workspace
-    notify("✓ Plataforma teletransportadora creada")
-end)
-
--- 45. ESPEJO
-createButton("Create Mirror", function()
-    local mirror = Instance.new("Part")
-    mirror.Shape = Enum.PartType.Block
-    mirror.Material = Enum.Material.Glass
-    mirror.Transparency = 0.3
-    mirror.Size = Vector3.new(8, 10, 0.5)
-    mirror.Position = HumanoidRootPart.Position + Vector3.new(0, 0, -5)
-    mirror.CanCollide = true
-    mirror.Parent = workspace
-    notify("✓ Espejo creado")
-end)
-
--- 46. MOSTRAR INFO DEL JUEGO
-createButton("Game Info", function()
-    print("\n=== INFORMACIÓN DEL JUEGO ===")
-    print("Juego: " .. game.Name)
-    print("Lugar: " .. workspace.Name)
-    print("Jugadores: " .. #Players:GetPlayers())
-    print("================================\n")
-end)
-
--- 47. RESETEAR COMANDOS
-createButton("Reset All Settings", function()
-    states.godMode = false
-    states.noclip = false
-    states.flyMode = false
-    states.spin = false
-    states.invisible = false
-    states.speedBoost = false
-    Humanoid.WalkSpeed = 16
-    for _, part in ipairs(Character:FindDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = true
-            part.Transparency = 0
-        end
-    end
-    notify("✓ Todos los comandos reseteados")
-end)
-
--- 48. GUARDAR POSICIÓN
-local savedPosition = nil
-createButton("Save Position", function()
-    savedPosition = HumanoidRootPart.CFrame
-    notify("✓ Posición guardada")
-end)
-
--- 49. IR A POSICIÓN GUARDADA
-createButton("Load Position", function()
-    if savedPosition then
-        HumanoidRootPart.CFrame = savedPosition
-        notify("✓ Posición cargada")
-    else
-        notify("✗ No hay posición guardada")
-    end
-end)
-
--- 50. INFORMACIÓN DETALLADA
-createButton("Detailed Stats", function()
-    local pos = HumanoidRootPart.Position
-    print("\n=== ESTADÍSTICAS DETALLADAS ===")
-    print("Posición: X=" .. math.floor(pos.X) .. " Y=" .. math.floor(pos.Y) .. " Z=" .. math.floor(pos.Z))
-    print("Salud: " .. math.floor(Humanoid.Health) .. "/" .. math.floor(Humanoid.MaxHealth))
-    print("Velocidad: " .. Humanoid.WalkSpeed)
-    print("Poder de Salto: " .. Humanoid.JumpPower)
-    print("================================\n")
-end)
-
--- ========== CERRAR MENÚ ==========
-closeBtn.MouseButton1Click:Connect(function()
-    screenGui:Destroy()
-end)
-
--- ========== TECLA PARA MOSTRAR/OCULTAR ==========
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
+    
+    -- M para toggle menú
     if input.KeyCode == Enum.KeyCode.M then
         mainFrame.Visible = not mainFrame.Visible
     end
-end)
-
--- ========== MOVER MENÚ ==========
-local dragging = false
-local dragInput = nil
-local dragStart = nil
-local startPos = nil
-
-titleBar.InputBegan:Connect(function(input, gameProcessed)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStart = input.Position
-        startPos = mainFrame.Position
+    
+    -- Z para toggle aimbot
+    if input.KeyCode == Enum.KeyCode.Z then
+        if settings.aimbot.enabled then
+            disableAimbot()
+        else
+            enableAimbot()
+        end
+    end
+    
+    -- X para toggle ESP
+    if input.KeyCode == Enum.KeyCode.X then
+        if settings.esp.enabled then
+            disableESP()
+        else
+            enableESP()
+        end
+    end
+    
+    -- C para toggle Fly
+    if input.KeyCode == Enum.KeyCode.C then
+        if settings.fly.enabled then
+            disableFly()
+        else
+            enableFly()
+        end
+    end
+    
+    -- V para toggle Godmode
+    if input.KeyCode == Enum.KeyCode.V then
+        if settings.combat.godMode then
+            disableGodMode()
+        else
+            enableGodMode()
+        end
+    end
+    
+    -- F para matar target
+    if input.KeyCode == Enum.KeyCode.F then
+        if targetPlayer and targetPlayer.Character then
+            targetPlayer.Character.Humanoid.Health = 0
+        end
     end
 end)
 
-UserInputService.InputChanged:Connect(function(input, gameProcessed)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-        local delta = input.Position - dragStart
-        mainFrame.Position = startPos + UDim2.new(0, delta.X, 0, delta.Y)
-    end
+-- ========== ACTUALIZAR STATUS ==========
+
+local function updateStatus()
+    local aimbotStatus = settings.aimbot.enabled and "ON" or "OFF"
+    local espStatus = settings.esp.enabled and "ON" or "OFF"
+    local flyStatus = settings.fly.enabled and "ON" or "OFF"
+    
+    statusLabel.Text = "Aimbot: " .. aimbotStatus .. " | ESP: " .. espStatus .. " | Fly: " .. flyStatus
+end
+
+RunService.Heartbeat:Connect(function()
+    updateStatus()
 end)
 
-UserInputService.InputEnded:Connect(function(input, gameProcessed)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-    end
-end)
+-- ========== INICIO ==========
+print("\n╔════════════════════════════════════════╗")
+print("║  ⚡ RIVAS EXECUTOR PRO CARGADO ⚡   ║")
+print("║  ✓ Aimbot habilitado                 ║")
+print("║  ✓ ESP habilitado                    ║")
+print("║  ✓ Fly habilitado                    ║")
+print("║                                        ║")
+print("║  CONTROLES:                          ║")
+print("║  M - Toggle Menú                     ║")
+print("║  Z - Toggle Aimbot                   ║")
+print("║  X - Toggle ESP                      ║")
+print("║  C - Toggle Fly                      ║")
+print("║  V - Toggle Godmode                  ║")
+print("║  F - Kill Target                     ║")
+print("║                                        ║")
+print("╚════════════════════════════════════════╝\n")
 
--- ========== INICIALIZACIÓN ==========
-print("✓ Script de menú cargado")
-print("✓ Presiona M para mostrar/ocultar el menú")
-print("✓ Arrastra el menú desde la barra de título")
-print("✓ 50+ opciones disponibles")
+notify("✓ RIVAS EXECUTOR PRO ACTIVADO")
+notify("✓ Presiona M para abrir menú")
+notify("✓ Z=Aimbot | X=ESP | C=Fly | V=Godmode | F=Kill")
