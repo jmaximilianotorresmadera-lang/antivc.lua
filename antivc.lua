@@ -1,4 +1,4 @@
--- RIVAS EXECUTOR PRO - Script Completo con Aimbot, ESP y Fly
+-- RIVAS EXECUTOR PRO - Script Completo con Aimbot, ESP, Fly (F para volar)
 -- LocalScript para StarterPlayer > StarterCharacterScripts
 -- Versión: 1.0 Rivas Edition
 
@@ -40,11 +40,12 @@ local settings = {
         showDistance = true,
         showHealth = true,
         showTeam = true,
-        boxType = "2D", -- "2D" o "3D"
+        boxType = "2D",
     },
     fly = {
         enabled = false,
         speed = 50,
+        bodyVel = nil,
     },
     combat = {
         godMode = false,
@@ -56,6 +57,7 @@ local settings = {
 
 local espDrawings = {}
 local targetPlayer = nil
+local flyingWithF = false
 
 -- ========== COLORES ==========
 local colors = {
@@ -72,6 +74,28 @@ local colors = {
 
 local function notify(msg)
     print("[RIVAS EXECUTOR] " .. msg)
+    local notif = Instance.new("Frame")
+    notif.Size = UDim2.new(0, 300, 0, 50)
+    notif.Position = UDim2.new(1, -320, 0.5, -25)
+    notif.BackgroundColor3 = colors.dark
+    notif.BorderSizePixel = 0
+    notif.Parent = screenGui
+    
+    local notifCorner = Instance.new("UICorner")
+    notifCorner.CornerRadius = UDim.new(0, 10)
+    notifCorner.Parent = notif
+    
+    local notifText = Instance.new("TextLabel")
+    notifText.Text = msg
+    notifText.Size = UDim2.new(1, 0, 1, 0)
+    notifText.BackgroundTransparency = 1
+    notifText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    notifText.TextSize = 12
+    notifText.Font = Enum.Font.GothamBold
+    notifText.Parent = notif
+    
+    task.wait(2)
+    notif:Destroy()
 end
 
 local function getNearestPlayer()
@@ -142,12 +166,10 @@ local function createESPBox(player)
     
     local camera = workspace.CurrentCamera
     
-    -- Convertir posición 3D a 2D
     local screenPos, onScreen = camera:WorldToScreenPoint(humanoidRootPart.Position)
     
     if not onScreen then return end
     
-    -- Crear caja 2D
     local box = Drawing.new("Rectangle")
     box.Size = Vector2.new(100, 120)
     box.Position = Vector2.new(screenPos.X - 50, screenPos.Y - 60)
@@ -156,14 +178,12 @@ local function createESPBox(player)
     box.Transparency = 0.7
     box.Filled = false
     
-    -- Nombre del jugador
     local nameLabel = Drawing.new("Text")
     nameLabel.Text = player.Name
     nameLabel.Size = 18
     nameLabel.Color = Color3.fromRGB(255, 255, 255)
     nameLabel.Position = Vector2.new(screenPos.X - 30, screenPos.Y - 80)
     
-    -- Distancia
     local distance = (humanoidRootPart.Position - HumanoidRootPart.Position).Magnitude
     local distLabel = Drawing.new("Text")
     distLabel.Text = math.floor(distance) .. "m"
@@ -171,7 +191,6 @@ local function createESPBox(player)
     distLabel.Color = Color3.fromRGB(150, 255, 150)
     distLabel.Position = Vector2.new(screenPos.X - 20, screenPos.Y + 65)
     
-    -- Salud
     local healthLabel = Drawing.new("Text")
     healthLabel.Text = "HP: " .. math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth)
     healthLabel.Size = 14
@@ -219,40 +238,56 @@ end
 
 -- ========== FLY SYSTEM ==========
 
-local function enableFly()
+local function enableFlyMode()
     settings.fly.enabled = true
-    notify("✓ FLY ACTIVADO - Velocidad: " .. settings.fly.speed)
+    notify("✓ FLY ACTIVADO - PRESIONA F PARA VOLAR")
     
-    local bodyVel = Instance.new("BodyVelocity")
-    bodyVel.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-    bodyVel.Parent = HumanoidRootPart
+    if not settings.fly.bodyVel then
+        settings.fly.bodyVel = Instance.new("BodyVelocity")
+        settings.fly.bodyVel.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+        settings.fly.bodyVel.Parent = HumanoidRootPart
+    end
+end
+
+local function disableFlyMode()
+    settings.fly.enabled = false
+    if settings.fly.bodyVel then
+        settings.fly.bodyVel:Destroy()
+        settings.fly.bodyVel = nil
+    end
+    flyingWithF = false
+    notify("✗ FLY DESACTIVADO")
+end
+
+local function startFlyingWithF()
+    flyingWithF = true
+    
+    if not settings.fly.bodyVel then
+        settings.fly.bodyVel = Instance.new("BodyVelocity")
+        settings.fly.bodyVel.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+        settings.fly.bodyVel.Parent = HumanoidRootPart
+    end
+    
+    notify("🚀 VOLANDO CON F - Presiona F de nuevo para parar")
     
     local connection
     connection = RunService.RenderStepped:Connect(function()
-        if not settings.fly.enabled then
+        if not flyingWithF or not settings.fly.bodyVel then
             connection:Disconnect()
-            bodyVel:Destroy()
             return
         end
         
         local camera = workspace.CurrentCamera
-        bodyVel.Velocity = camera.CFrame.LookVector * settings.fly.speed
+        settings.fly.bodyVel.Velocity = camera.CFrame.LookVector * settings.fly.speed
     end)
 end
 
-local function disableFly()
-    settings.fly.enabled = false
-    notify("✗ FLY DESACTIVADO")
-end
-
-local function increaseFlySpeed()
-    settings.fly.speed = settings.fly.speed + 10
-    notify("Velocidad: " .. settings.fly.speed)
-end
-
-local function decreaseFlySpeed()
-    settings.fly.speed = math.max(10, settings.fly.speed - 10)
-    notify("Velocidad: " .. settings.fly.speed)
+local function stopFlyingWithF()
+    flyingWithF = false
+    if settings.fly.bodyVel then
+        settings.fly.bodyVel.Velocity = Vector3.new(0, 0, 0)
+    end
+    notify("⬇️ VUELO PAUSADO")
 end
 
 -- ========== COMBAT FEATURES ==========
@@ -519,20 +554,22 @@ end, colors.accent)
 
 -- ========== BOTONES FLY ==========
 
-createButton(scrollFrame, "Enable Fly", function()
+createButton(scrollFrame, "Enable Fly (Press F to Fly)", function()
     if settings.fly.enabled then
-        disableFly()
+        disableFlyMode()
     else
-        enableFly()
+        enableFlyMode()
     end
 end, colors.primary)
 
 createButton(scrollFrame, "Fly Speed +", function()
-    increaseFlySpeed()
+    settings.fly.speed = settings.fly.speed + 10
+    notify("Velocidad: " .. settings.fly.speed)
 end, colors.accent)
 
 createButton(scrollFrame, "Fly Speed -", function()
-    decreaseFlySpeed()
+    settings.fly.speed = math.max(10, settings.fly.speed - 10)
+    notify("Velocidad: " .. settings.fly.speed)
 end, colors.accent)
 
 -- ========== BOTONES COMBAT ==========
@@ -610,7 +647,7 @@ end, colors.accent)
 createButton(scrollFrame, "Reset All", function()
     disableAimbot()
     disableESP()
-    disableFly()
+    disableFlyMode()
     disableGodMode()
     disableNoclip()
     disableInvisible()
@@ -646,12 +683,16 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         end
     end
     
-    -- C para toggle Fly
-    if input.KeyCode == Enum.KeyCode.C then
+    -- F PARA VOLAR - NUEVA FUNCIONALIDAD
+    if input.KeyCode == Enum.KeyCode.F then
         if settings.fly.enabled then
-            disableFly()
+            if flyingWithF then
+                stopFlyingWithF()
+            else
+                startFlyingWithF()
+            end
         else
-            enableFly()
+            notify("⚠️ Debes activar Fly primero")
         end
     end
     
@@ -664,10 +705,12 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         end
     end
     
-    -- F para matar target
-    if input.KeyCode == Enum.KeyCode.F then
-        if targetPlayer and targetPlayer.Character then
-            targetPlayer.Character.Humanoid.Health = 0
+    -- C para Speed
+    if input.KeyCode == Enum.KeyCode.C then
+        if settings.combat.speedBoost then
+            disableSpeedBoost()
+        else
+            enableSpeedBoost()
         end
     end
 end)
@@ -677,7 +720,7 @@ end)
 local function updateStatus()
     local aimbotStatus = settings.aimbot.enabled and "ON" or "OFF"
     local espStatus = settings.esp.enabled and "ON" or "OFF"
-    local flyStatus = settings.fly.enabled and "ON" or "OFF"
+    local flyStatus = (settings.fly.enabled and flyingWithF) and "FLYING" or (settings.fly.enabled and "ON" or "OFF")
     
     statusLabel.Text = "Aimbot: " .. aimbotStatus .. " | ESP: " .. espStatus .. " | Fly: " .. flyStatus
 end
@@ -697,12 +740,12 @@ print("║  CONTROLES:                          ║")
 print("║  M - Toggle Menú                     ║")
 print("║  Z - Toggle Aimbot                   ║")
 print("║  X - Toggle ESP                      ║")
-print("║  C - Toggle Fly                      ║")
+print("║  F - VOLAR (Requiere Fly ON)        ║")
 print("║  V - Toggle Godmode                  ║")
-print("║  F - Kill Target                     ║")
+print("║  C - Toggle Speed Boost              ║")
 print("║                                        ║")
 print("╚════════════════════════════════════════╝\n")
 
 notify("✓ RIVAS EXECUTOR PRO ACTIVADO")
 notify("✓ Presiona M para abrir menú")
-notify("✓ Z=Aimbot | X=ESP | C=Fly | V=Godmode | F=Kill")
+notify("✓ Presiona F para VOLAR (después de activar Fly)")
